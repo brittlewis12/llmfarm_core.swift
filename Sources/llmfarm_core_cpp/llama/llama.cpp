@@ -2991,7 +2991,7 @@ static void llm_load_tensors(
                 } break;
             case LLM_ARCH_STABLELM:
                 {
-                    model.tok_embd = ml.create_tensor(ctx, tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, GGML_BACKEND_CPU);
+                    model.tok_embeddings = ml.create_tensor(ctx, tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab}, GGML_BACKEND_CPU);
 
                     // output
                     {
@@ -3002,12 +3002,12 @@ static void llm_load_tensors(
                             // norm is not performance relevant on its own but keeping it in VRAM reduces data copying
                             // on Windows however this is detrimental unless everything is on the GPU
 #ifndef _WIN32
-                            backend_norm = llama_backend_offload;
+                            backend_norm = GGML_BACKEND_GPU;
 #else
-                            backend_norm = n_gpu_layers <= (int) n_layer + 2 ? GGML_BACKEND_CPU : llama_backend_offload;
+                            backend_norm = n_gpu_layers <= (int) n_layer + 2 ? GGML_BACKEND_CPU : GGML_BACKEND_GPU;
 #endif // _WIN32
 
-                            backend_output = llama_backend_offload_split;
+                            backend_output = GGML_BACKEND_GPU_SPLIT;
                         } else {
                             backend_norm   = GGML_BACKEND_CPU;
                             backend_output = GGML_BACKEND_CPU;
@@ -3035,8 +3035,8 @@ static void llm_load_tensors(
                         /*
                         llama_model_loader: - tensor    4:         blk.0.attn_output.weight f16      [  2560,  2560,     1,     1 ]
                         */
-                        const ggml_backend_type backend = int(i) < i_gpu_start ? GGML_BACKEND_CPU : llama_backend_offload; // NOLINT
-                        const ggml_backend_type backend_split = int(i) < i_gpu_start ? GGML_BACKEND_CPU : llama_backend_offload_split; // NOLINT
+                        const ggml_backend_type backend = int(i) < i_gpu_start ? GGML_BACKEND_CPU : GGML_BACKEND_GPU; // NOLINT
+                        const ggml_backend_type backend_split = int(i) < i_gpu_start ? GGML_BACKEND_CPU : GGML_BACKEND_GPU_SPLIT; // NOLINT
 
                         auto & layer = model.layers[i];
 
@@ -3051,15 +3051,15 @@ static void llm_load_tensors(
                         layer.ffn_norm = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_NORM, "weight", i), {n_embd}, backend);
                         layer.ffn_norm_b = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_NORM, "bias", i), {n_embd}, backend);
 
-                        layer.ffn_gate = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff}, backend_split);
-                        layer.ffn_down = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_DOWN, "weight", i), {  n_ff, n_embd}, backend_split);
-                        layer.ffn_up = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, backend_split);
+                        layer.w1 = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_GATE, "weight", i), {n_embd,   n_ff}, backend_split);
+                        layer.w2 = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_DOWN, "weight", i), {  n_ff, n_embd}, backend_split);
+                        layer.w3 = ml.create_tensor(ctx, tn(LLM_TENSOR_FFN_UP,   "weight", i), {n_embd,   n_ff}, backend_split);
 
                         if (backend == GGML_BACKEND_GPU) {
                             vram_weights +=
                                 ggml_nbytes(layer.attn_norm) + ggml_nbytes(layer.wq)       + ggml_nbytes(layer.wk)       +
                                 ggml_nbytes(layer.wv)        + ggml_nbytes(layer.wo)       + ggml_nbytes(layer.ffn_norm) +
-                                ggml_nbytes(layer.ffn_gate)  + ggml_nbytes(layer.ffn_down) + ggml_nbytes(layer.ffn_up);
+                                ggml_nbytes(layer.w1)  + ggml_nbytes(layer.w2) + ggml_nbytes(layer.w3);
                         }
                     }
                 } break;
@@ -5943,7 +5943,7 @@ struct ggml_cgraph * build_stablelm() {
     struct ggml_tensor * cur;
     struct ggml_tensor * inpL;
 
-    inpL = llm_build_inp_embd(ctx0, hparams, batch, model.tok_embd, cb);
+    inpL = llm_build_inp_embd(ctx0, hparams, batch, model.tok_embeddings, cb);
     cb(inpL, "inp_embd", -1);
 
     // inp_pos - contains the positions
@@ -6076,9 +6076,9 @@ struct ggml_cgraph * build_stablelm() {
             cb(cur, "ffn_norm", il);
 
             cur = llm_build_ffn(ctx0, cur,
-                    model.layers[il].ffn_up,   NULL,
-                    model.layers[il].ffn_gate, NULL,
-                    model.layers[il].ffn_down, NULL,
+                    model.layers[il].w3, NULL,
+                    model.layers[il].w1, NULL,
+                    model.layers[il].w2, NULL,
                     LLM_FFN_SILU, LLM_FFN_PAR, cb, il);
             cb(cur, "ffn_out", il);
         }
