@@ -52,6 +52,7 @@ bool gpt_params_parse(int argc, char ** argv, gpt_params & params) {
             params.top_p = std::stof(get_next_arg(i, argc, argv, arg, params));
         } else if (arg == "--temp") {
             params.temp = std::stof(get_next_arg(i, argc, argv, arg, params));
+            params.temp = std::max(params.temp, 0.0f);
         } else if (arg == "--repeat-last-n") {
             params.repeat_last_n = std::stoi(get_next_arg(i, argc, argv, arg, params));
         } else if (arg == "--repeat-penalty") {
