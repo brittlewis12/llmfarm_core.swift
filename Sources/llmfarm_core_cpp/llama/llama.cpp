@@ -6295,6 +6295,7 @@ static int llama_decode_internal(
         model.arch == LLM_ARCH_FALCON ||
         model.arch == LLM_ARCH_REFACT ||
         model.arch == LLM_ARCH_MPT ||
+        model.arch == LLM_ARCH_STARCODER ||
         model.arch == LLM_ARCH_STABLELM;
     const bool fully_offloaded = model.n_gpu_layers >= (int) hparams.n_layer + 3;
     if (ggml_cpu_has_cublas() && full_offload_supported && fully_offloaded) {
