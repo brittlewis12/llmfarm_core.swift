@@ -121,8 +121,12 @@ llama_token llama_sampling_sample(
         llama_sample_grammar(ctx, &cur_p, ctx_seq.grammar);
     }
 
-    if (temp <= 0) {
-        // Greedy sampling
+    if (temp < 0.0) {
+        // greedy sampling, with probs
+        llama_sample_softmax(ctx_main, &cur_p);
+        id = cur_p.data[0].id;
+    } else if (temp == 0.0) {
+        // greedy sampling, no probs
         id = llama_sample_token_greedy(ctx, &cur_p);
     } else {
         if (mirostat == 1) {
