@@ -63,7 +63,68 @@ public class LLaMa: LLMBase {
 
         return true
     }
-    
+
+    public override func reset_context(newParams: ModelAndContextParams = .default) throws -> Bool {
+        if self.model == nil {
+            return false
+        }
+
+        if self.context != nil {
+            llama_free(self.context)
+        }
+
+        var context_params = llama_context_default_params()
+        context_params.n_ctx = UInt32(newParams.context)
+        context_params.seed = UInt32(newParams.seed)
+        context_params.f16_kv = newParams.f16Kv
+        context_params.n_threads = UInt32(newParams.n_threads)
+        context_params.logits_all = newParams.logitsAll
+
+        self.past = []
+        self.nPast = 0
+        self.session_tokens = []
+        self.context = llama_new_context_with_model(self.model, context_params)
+
+        if self.context == nil {
+            return false
+        }
+
+        _ = try self.llm_init_logits()
+
+        return true
+    }
+
+    public override func load_past(_ history: String) -> Bool {
+        let tokens = llm_tokenize(history)
+        self.session_tokens.append(contentsOf: tokens[0..<tokens.count])
+        self.past.append(contentsOf: [tokens])
+        let batchSize = 256
+        let batches = (tokens.count + batchSize - 1) / batchSize
+        var ok = true
+        print("loading \(tokens.count) past tokens in \(batches) batches of \(batchSize)")
+        for batchNum in 0..<batches {
+            let startIndex = batchNum * batchSize
+            let endIndex = min(startIndex + batchSize, tokens.count)
+            let batch = Array(tokens[startIndex..<endIndex])
+            ok = (try? llm_eval(inputBatch: batch)) ?? false
+            if !ok { break }
+            // NOTE: must set nPast _after_ evaling tokens, not before, to ensure correct offsets to next kv access
+            self.nPast = batchNum == 0 ? Int32(batch.count) : nPast + Int32(batch.count)
+            print("loaded batch \(batchNum + 1) of \(batches)")
+        }
+
+        if ok {
+            print("loaded \(tokens.count) past tokens")
+        } else {
+            print("something went wrong loading past, resetting")
+            self.session_tokens = []
+            self.past = []
+            self.nPast = 0
+        }
+
+        return ok
+    }
+
     deinit {
 //        llama_save_state(self.context,"/Users/guinmoon/Library/Containers/com.guinmoon.LLMFarm/Data/Documents/models/dump_state_.bin")
 //        llama_save_session_file(self.context,"/Users/guinmoon/Library/Containers/com.guinmoon.LLMFarm/Data/Documents/models/dump_state.bin",self.session_tokens, self.session_tokens.count)
