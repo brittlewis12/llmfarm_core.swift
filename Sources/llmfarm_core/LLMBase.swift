@@ -444,7 +444,15 @@ public class LLMBase {
             throw error
         }
     }
-    
+
+    public func reset_context(newParams: ModelAndContextParams = .default) throws -> Bool {
+        return false
+    }
+
+    public func load_past(_ history: String) -> Bool {
+        return false
+    }
+
 //    public func embeddings(_ input: String) throws -> [Float] {
 //        // Tokenize the prompt
 //        let inputs = llm_tokenize(input)
