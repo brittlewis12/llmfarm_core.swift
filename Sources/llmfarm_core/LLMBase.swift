@@ -449,7 +449,7 @@ public class LLMBase {
         return false
     }
 
-    public func load_past(_ history: String) -> Bool {
+    public func load_past(_ history: String, _ callback: ((Int, Int) -> Void)? = nil) -> Bool {
         return false
     }
 

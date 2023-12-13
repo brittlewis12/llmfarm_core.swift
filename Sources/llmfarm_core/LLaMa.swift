@@ -94,14 +94,15 @@ public class LLaMa: LLMBase {
         return true
     }
 
-    public override func load_past(_ history: String) -> Bool {
+    public override func load_past(_ history: String, _ callback: ((Int, Int) -> Void)? = nil) -> Bool {
         let tokens = llm_tokenize(history)
         self.session_tokens.append(contentsOf: tokens[0..<tokens.count])
         self.past.append(contentsOf: [tokens])
-        let batchSize = 256
+        let batchSize = Int(self.sampleParams.n_batch)
         let batches = (tokens.count + batchSize - 1) / batchSize
         var ok = true
         print("loading \(tokens.count) past tokens in \(batches) batches of \(batchSize)")
+        callback?(0, batches)
         for batchNum in 0..<batches {
             let startIndex = batchNum * batchSize
             let endIndex = min(startIndex + batchSize, tokens.count)
@@ -111,6 +112,7 @@ public class LLaMa: LLMBase {
             // NOTE: must set nPast _after_ evaling tokens, not before, to ensure correct offsets to next kv access
             self.nPast = batchNum == 0 ? Int32(batch.count) : nPast + Int32(batch.count)
             print("loaded batch \(batchNum + 1) of \(batches)")
+            callback?(batchNum + 1, batches)
         }
 
         if ok {
